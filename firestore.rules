@@ -1,0 +1,867 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Primitive Helpers
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'sevenjoel326@gmail.com'
+      );
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'language', 'subscriptionStatus', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'role', 'city', 'language', 'photoUrl',
+          'notificationSoundEnabled', 'accessibilityHighContrast',
+          'subscriptionStatus', 'subscriptionExpiresAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && isValidString(data.displayName, 1, 120)
+        && data.role in ['customer', 'pharmacy', 'support', 'moderator', 'admin', 'super_admin']
+        && (!('city' in data) || isValidString(data.city, 0, 100))
+        && data.language in ['en', 'am', 'om', 'ti', 'so']
+        && (!('photoUrl' in data) || isValidString(data.photoUrl, 0, 500))
+        && (!('notificationSoundEnabled' in data) || data.notificationSoundEnabled is bool)
+        && (!('accessibilityHighContrast' in data) || data.accessibilityHighContrast is bool)
+        && data.subscriptionStatus in ['active', 'expiring_soon', 'expired', 'payment_pending', 'payment_failed', 'cancelled', 'suspended', 'free_tier']
+        && (!('subscriptionExpiresAt' in data) || isValidString(data.subscriptionExpiresAt, 0, 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'phoneVerified', 'emailVerified', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'phone', 'phoneVerified', 'emailVerified', 'mfaEnabled', 'consentGivenAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isValidString(data.email, 3, 200)
+        && (!('phone' in data) || isValidString(data.phone, 0, 32))
+        && data.phoneVerified is bool
+        && data.emailVerified is bool
+        && (!('mfaEnabled' in data) || data.mfaEnabled is bool)
+        && (!('consentGivenAt' in data) || isValidString(data.consentGivenAt, 0, 64))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'role', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'role', 'email', 'createdAt'])
+        && isValidId(data.uid)
+        && data.role in ['super_admin', 'admin', 'moderator', 'support']
+        && isValidString(data.email, 3, 200)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPharmacy(data) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'name', 'ownerPharmacistName', 'licenseNumber',
+          'region', 'city', 'phone', 'verificationStatus', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'name', 'ownerPharmacistName', 'licenseNumber',
+          'region', 'city', 'subCity', 'woreda', 'street', 'lat', 'lng',
+          'phone', 'email', 'openingHours', 'verificationStatus',
+          'ratingAvg', 'ratingCount', 'subscriptionStatus', 'subscriptionExpiresAt',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.ownerUid)
+        && isValidString(data.name, 2, 160)
+        && isValidString(data.ownerPharmacistName, 2, 140)
+        && isValidString(data.licenseNumber, 2, 80)
+        && isValidString(data.region, 2, 80)
+        && isValidString(data.city, 2, 100)
+        && (!('subCity' in data) || isValidString(data.subCity, 0, 100))
+        && (!('woreda' in data) || isValidString(data.woreda, 0, 80))
+        && (!('street' in data) || isValidString(data.street, 0, 200))
+        && (!('lat' in data) || (data.lat is number && data.lat >= -90 && data.lat <= 90))
+        && (!('lng' in data) || (data.lng is number && data.lng >= -180 && data.lng <= 180))
+        && isValidString(data.phone, 5, 32)
+        && (!('email' in data) || isValidString(data.email, 0, 200))
+        && (!('openingHours' in data) || isValidString(data.openingHours, 0, 200))
+        && data.verificationStatus in ['pending', 'approved', 'rejected', 'suspended']
+        && (!('ratingAvg' in data) || (data.ratingAvg is number && data.ratingAvg >= 0 && data.ratingAvg <= 5))
+        && (!('ratingCount' in data) || (data.ratingCount is number && data.ratingCount >= 0))
+        && (!('subscriptionStatus' in data) || data.subscriptionStatus in ['active', 'expiring_soon', 'expired', 'payment_pending', 'payment_failed', 'cancelled', 'suspended'])
+        && (!('subscriptionExpiresAt' in data) || isValidString(data.subscriptionExpiresAt, 0, 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidVerificationDoc(data) {
+      return data.keys().hasAll(['pharmacyId', 'ownerUid', 'fileId', 'fileName', 'docType', 'uploadedAt'])
+        && data.keys().hasOnly(['pharmacyId', 'ownerUid', 'fileId', 'fileName', 'docType', 'uploadedAt'])
+        && isValidId(data.pharmacyId)
+        && isValidId(data.ownerUid)
+        && isValidId(data.fileId)
+        && isValidString(data.fileName, 1, 200)
+        && isValidString(data.docType, 1, 64)
+        && data.uploadedAt is timestamp;
+    }
+
+    function isValidMedicine(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'genericName', 'activeIngredient', 'dosageForm',
+          'category', 'prescriptionClass', 'verifiedSource', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'genericName', 'brandName', 'activeIngredient', 'strength',
+          'dosageForm', 'packaging', 'manufacturer', 'countryOfOrigin',
+          'registrationNumber', 'prescriptionClass', 'description', 'approvedUsage',
+          'warnings', 'storageInfo', 'category', 'imageUrl', 'verifiedSource',
+          'recallAlert', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 1, 160)
+        && isValidString(data.genericName, 1, 160)
+        && (!('brandName' in data) || isValidString(data.brandName, 0, 160))
+        && isValidString(data.activeIngredient, 1, 160)
+        && (!('strength' in data) || isValidString(data.strength, 0, 80))
+        && isValidString(data.dosageForm, 1, 80)
+        && (!('packaging' in data) || isValidString(data.packaging, 0, 120))
+        && (!('manufacturer' in data) || isValidString(data.manufacturer, 0, 140))
+        && (!('countryOfOrigin' in data) || isValidString(data.countryOfOrigin, 0, 80))
+        && (!('registrationNumber' in data) || isValidString(data.registrationNumber, 0, 80))
+        && data.prescriptionClass in ['OTC', 'POM', 'Controlled']
+        && (!('description' in data) || isValidString(data.description, 0, 1200))
+        && (!('approvedUsage' in data) || isValidString(data.approvedUsage, 0, 800))
+        && (!('warnings' in data) || isValidString(data.warnings, 0, 800))
+        && (!('storageInfo' in data) || isValidString(data.storageInfo, 0, 300))
+        && isValidString(data.category, 1, 80)
+        && (!('imageUrl' in data) || isValidString(data.imageUrl, 0, 500))
+        && isValidString(data.verifiedSource, 1, 200)
+        && (!('recallAlert' in data) || isValidString(data.recallAlert, 0, 400))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInventory(data) {
+      return data.keys().hasAll([
+          'id', 'pharmacyId', 'ownerUid', 'medicineName', 'priceEtb',
+          'stockStatus', 'lastConfirmedAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'pharmacyId', 'ownerUid', 'pharmacyName', 'pharmacyCity',
+          'pharmacyLat', 'pharmacyLng', 'pharmacyVerified', 'medicineId',
+          'medicineName', 'genericName', 'brandName', 'activeIngredient',
+          'strength', 'dosageForm', 'category', 'prescriptionClass',
+          'priceEtb', 'stockStatus', 'quantity', 'lastConfirmedAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.pharmacyId)
+        && isValidId(data.ownerUid)
+        && (!('pharmacyName' in data) || isValidString(data.pharmacyName, 0, 160))
+        && (!('pharmacyCity' in data) || isValidString(data.pharmacyCity, 0, 100))
+        && (!('pharmacyLat' in data) || data.pharmacyLat is number)
+        && (!('pharmacyLng' in data) || data.pharmacyLng is number)
+        && (!('pharmacyVerified' in data) || data.pharmacyVerified is bool)
+        && (!('medicineId' in data) || isValidString(data.medicineId, 0, 128))
+        && isValidString(data.medicineName, 1, 160)
+        && (!('genericName' in data) || isValidString(data.genericName, 0, 160))
+        && (!('brandName' in data) || isValidString(data.brandName, 0, 160))
+        && (!('activeIngredient' in data) || isValidString(data.activeIngredient, 0, 160))
+        && (!('strength' in data) || isValidString(data.strength, 0, 80))
+        && (!('dosageForm' in data) || isValidString(data.dosageForm, 0, 80))
+        && (!('category' in data) || isValidString(data.category, 0, 80))
+        && (!('prescriptionClass' in data) || data.prescriptionClass in ['OTC', 'POM', 'Controlled'])
+        && data.priceEtb is number && data.priceEtb >= 0 && data.priceEtb <= 1000000
+        && data.stockStatus in ['available', 'low_stock', 'out_of_stock', 'unconfirmed']
+        && (!('quantity' in data) || (data.quantity is number && data.quantity >= 0))
+        && isValidString(data.lastConfirmedAt, 1, 64)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInventoryHistory(data) {
+      return data.keys().hasAll(['inventoryId', 'pharmacyId', 'ownerUid', 'newStatus', 'priceEtb', 'createdAt'])
+        && data.keys().hasOnly(['inventoryId', 'pharmacyId', 'ownerUid', 'medicineName', 'previousStatus', 'newStatus', 'priceEtb', 'createdAt'])
+        && isValidId(data.inventoryId)
+        && isValidId(data.pharmacyId)
+        && isValidId(data.ownerUid)
+        && (!('medicineName' in data) || isValidString(data.medicineName, 0, 160))
+        && (!('previousStatus' in data) || isValidString(data.previousStatus, 0, 32))
+        && data.newStatus in ['available', 'low_stock', 'out_of_stock', 'unconfirmed']
+        && data.priceEtb is number && data.priceEtb >= 0
+        && data.createdAt is timestamp;
+    }
+
+    function isValidLocation(data) {
+      return data.keys().hasAll(['id', 'region', 'city', 'lat', 'lng', 'createdAt'])
+        && data.keys().hasOnly(['id', 'region', 'city', 'subCity', 'woreda', 'neighborhood', 'lat', 'lng', 'createdAt'])
+        && isValidId(data.id)
+        && isValidString(data.region, 2, 100)
+        && isValidString(data.city, 2, 100)
+        && (!('subCity' in data) || isValidString(data.subCity, 0, 100))
+        && (!('woreda' in data) || isValidString(data.woreda, 0, 80))
+        && (!('neighborhood' in data) || isValidString(data.neighborhood, 0, 100))
+        && data.lat is number && data.lng is number
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['userUid', 'targetType', 'targetId', 'targetName', 'createdAt'])
+        && data.keys().hasOnly(['userUid', 'targetType', 'targetId', 'targetName', 'createdAt'])
+        && isValidId(data.userUid)
+        && data.targetType in ['medicine', 'pharmacy']
+        && isValidId(data.targetId)
+        && isValidString(data.targetName, 1, 160)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSearchHistory(data) {
+      return data.keys().hasAll(['userUid', 'query', 'createdAt'])
+        && data.keys().hasOnly(['userUid', 'query', 'city', 'category', 'createdAt'])
+        && isValidId(data.userUid)
+        && isValidString(data.query, 1, 160)
+        && (!('city' in data) || isValidString(data.city, 0, 100))
+        && (!('category' in data) || isValidString(data.category, 0, 80))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidConversation(data) {
+      return data.keys().hasAll(['id', 'customerUid', 'pharmacyId', 'pharmacyOwnerUid', 'customerName', 'pharmacyName', 'createdAt'])
+        && data.keys().hasOnly(['id', 'customerUid', 'pharmacyId', 'pharmacyOwnerUid', 'customerName', 'pharmacyName', 'lastMessage', 'lastMessageAt', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.customerUid)
+        && isValidId(data.pharmacyId)
+        && isValidId(data.pharmacyOwnerUid)
+        && isValidString(data.customerName, 1, 120)
+        && isValidString(data.pharmacyName, 1, 160)
+        && (!('lastMessage' in data) || isValidString(data.lastMessage, 0, 500))
+        && (!('lastMessageAt' in data) || data.lastMessageAt is timestamp)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['conversationId', 'senderUid', 'customerUid', 'pharmacyOwnerUid', 'senderRole', 'text', 'createdAt'])
+        && data.keys().hasOnly(['conversationId', 'senderUid', 'customerUid', 'pharmacyOwnerUid', 'senderRole', 'text', 'attachmentFileId', 'attachmentName', 'attachmentType', 'readAt', 'createdAt'])
+        && isValidId(data.conversationId)
+        && isValidId(data.senderUid)
+        && isValidId(data.customerUid)
+        && isValidId(data.pharmacyOwnerUid)
+        && data.senderRole in ['customer', 'pharmacy']
+        && isValidString(data.text, 0, 2000)
+        && (!('attachmentFileId' in data) || isValidString(data.attachmentFileId, 0, 128))
+        && (!('attachmentName' in data) || isValidString(data.attachmentName, 0, 200))
+        && (!('attachmentType' in data) || isValidString(data.attachmentType, 0, 80))
+        && (!('readAt' in data) || isValidString(data.readAt, 0, 64))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCallRecord(data) {
+      return data.keys().hasAll(['conversationId', 'callerUid', 'calleeUid', 'callType', 'status', 'createdAt'])
+        && data.keys().hasOnly(['conversationId', 'callerUid', 'calleeUid', 'pharmacyId', 'callType', 'status', 'durationSeconds', 'createdAt'])
+        && isValidId(data.conversationId)
+        && isValidId(data.callerUid)
+        && isValidId(data.calleeUid)
+        && (!('pharmacyId' in data) || isValidString(data.pharmacyId, 0, 128))
+        && data.callType in ['audio', 'video']
+        && data.status in ['ringing', 'active', 'ended', 'missed', 'declined']
+        && (!('durationSeconds' in data) || (data.durationSeconds is number && data.durationSeconds >= 0))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['recipientUid', 'type', 'title', 'body', 'read', 'createdAt'])
+        && data.keys().hasOnly(['recipientUid', 'type', 'title', 'body', 'read', 'createdAt'])
+        && isValidId(data.recipientUid)
+        && isValidString(data.type, 1, 64)
+        && isValidString(data.title, 1, 160)
+        && isValidString(data.body, 1, 500)
+        && data.read is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSubscription(data) {
+      return data.keys().hasAll(['uid', 'role', 'status', 'priceEtb', 'durationDays', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'role', 'status', 'priceEtb', 'durationDays', 'startedAt', 'expiresAt', 'lastTxRef', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.role in ['customer', 'pharmacy']
+        && data.status in ['active', 'expiring_soon', 'expired', 'payment_pending', 'payment_failed', 'cancelled', 'suspended']
+        && data.priceEtb is number && data.priceEtb >= 0
+        && data.durationDays is number && data.durationDays >= 1 && data.durationDays <= 366
+        && (!('startedAt' in data) || isValidString(data.startedAt, 0, 64))
+        && (!('expiresAt' in data) || isValidString(data.expiresAt, 0, 64))
+        && (!('lastTxRef' in data) || isValidString(data.lastTxRef, 0, 128))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPaymentTransaction(data) {
+      return data.keys().hasAll(['txRef', 'uid', 'amountEtb', 'currency', 'provider', 'status', 'purpose', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['txRef', 'uid', 'amountEtb', 'currency', 'provider', 'status', 'purpose', 'receiptNumber', 'verificationSignature', 'createdAt', 'updatedAt'])
+        && isValidId(data.txRef)
+        && isValidId(data.uid)
+        && data.amountEtb is number && data.amountEtb > 0
+        && data.currency == 'ETB'
+        && data.provider in ['chapa', 'telebirr', 'cbe_birr']
+        && data.status in ['pending', 'verified', 'failed']
+        && data.purpose in ['subscription_activation', 'subscription_renewal']
+        && (!('receiptNumber' in data) || isValidString(data.receiptNumber, 0, 128))
+        && (!('verificationSignature' in data) || isValidString(data.verificationSignature, 0, 256))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrescriptionRequest(data) {
+      return data.keys().hasAll(['id', 'customerUid', 'customerName', 'requestType', 'city', 'consentAccepted', 'targetPharmacyIds', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'customerUid', 'customerName', 'requestType', 'city', 'notes', 'medicineNameKnown', 'strengthKnown', 'quantityKnown', 'consentAccepted', 'targetPharmacyIds', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.customerUid)
+        && isValidString(data.customerName, 1, 120)
+        && data.requestType in ['prescription', 'medicine_image']
+        && isValidString(data.city, 1, 100)
+        && (!('notes' in data) || isValidString(data.notes, 0, 1000))
+        && (!('medicineNameKnown' in data) || isValidString(data.medicineNameKnown, 0, 160))
+        && (!('strengthKnown' in data) || isValidString(data.strengthKnown, 0, 80))
+        && (!('quantityKnown' in data) || isValidString(data.quantityKnown, 0, 60))
+        && data.consentAccepted == true
+        && data.targetPharmacyIds is list && data.targetPharmacyIds.size() >= 1 && data.targetPharmacyIds.size() <= 10 && data.targetPharmacyIds[0] is string
+        && data.status in ['submitted', 'received', 'under_review', 'available', 'partially_available', 'out_of_stock', 'clarification_required', 'response_sent', 'completed', 'cancelled']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrescriptionFile(data) {
+      return data.keys().hasAll(['requestId', 'uploadedByUid', 'fileId', 'originalName', 'mimeType', 'sizeBytes', 'createdAt'])
+        && data.keys().hasOnly(['requestId', 'uploadedByUid', 'fileId', 'originalName', 'mimeType', 'sizeBytes', 'pageIndex', 'createdAt'])
+        && isValidId(data.requestId)
+        && isValidId(data.uploadedByUid)
+        && isValidId(data.fileId)
+        && isValidString(data.originalName, 1, 200)
+        && isValidString(data.mimeType, 3, 80)
+        && data.sizeBytes is number && data.sizeBytes > 0 && data.sizeBytes <= 15728640
+        && (!('pageIndex' in data) || (data.pageIndex is number && data.pageIndex >= 0 && data.pageIndex <= 20))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPrescriptionAssignment(data) {
+      return data.keys().hasAll(['id', 'requestId', 'customerUid', 'pharmacyId', 'pharmacyOwnerUid', 'pharmacyName', 'requestType', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'requestId', 'customerUid', 'customerName', 'pharmacyId', 'pharmacyOwnerUid', 'pharmacyName', 'requestType', 'city', 'notes', 'medicineNameKnown', 'strengthKnown', 'quantityKnown', 'fileIds', 'status', 'responseNotes', 'estimatedTotalEtb', 'estimatedPrepMinutes', 'pharmacyLocationText', 'pharmacyPhone', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.requestId)
+        && isValidId(data.customerUid)
+        && (!('customerName' in data) || isValidString(data.customerName, 0, 120))
+        && isValidId(data.pharmacyId)
+        && isValidId(data.pharmacyOwnerUid)
+        && isValidString(data.pharmacyName, 1, 160)
+        && data.requestType in ['prescription', 'medicine_image']
+        && (!('city' in data) || isValidString(data.city, 0, 100))
+        && (!('notes' in data) || isValidString(data.notes, 0, 1000))
+        && (!('medicineNameKnown' in data) || isValidString(data.medicineNameKnown, 0, 160))
+        && (!('strengthKnown' in data) || isValidString(data.strengthKnown, 0, 80))
+        && (!('quantityKnown' in data) || isValidString(data.quantityKnown, 0, 60))
+        && (!('fileIds' in data) || (data.fileIds is list && data.fileIds.size() <= 10 && (data.fileIds.size() == 0 || data.fileIds[0] is string)))
+        && data.status in ['submitted', 'received', 'under_review', 'available', 'partially_available', 'out_of_stock', 'clarification_required', 'response_sent', 'completed', 'cancelled']
+        && (!('responseNotes' in data) || isValidString(data.responseNotes, 0, 1200))
+        && (!('estimatedTotalEtb' in data) || (data.estimatedTotalEtb is number && data.estimatedTotalEtb >= 0))
+        && (!('estimatedPrepMinutes' in data) || (data.estimatedPrepMinutes is number && data.estimatedPrepMinutes >= 0))
+        && (!('pharmacyLocationText' in data) || isValidString(data.pharmacyLocationText, 0, 240))
+        && (!('pharmacyPhone' in data) || isValidString(data.pharmacyPhone, 0, 32))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['pharmacyId', 'customerUid', 'customerName', 'rating', 'createdAt'])
+        && data.keys().hasOnly(['pharmacyId', 'customerUid', 'customerName', 'rating', 'comment', 'createdAt'])
+        && isValidId(data.pharmacyId)
+        && isValidId(data.customerUid)
+        && isValidString(data.customerName, 1, 120)
+        && data.rating is number && data.rating >= 1 && data.rating <= 5
+        && (!('comment' in data) || isValidString(data.comment, 0, 800))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidComplaint(data) {
+      return data.keys().hasAll(['reporterUid', 'targetType', 'subject', 'description', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['reporterUid', 'targetType', 'targetId', 'subject', 'description', 'status', 'adminNotes', 'createdAt', 'updatedAt'])
+        && isValidId(data.reporterUid)
+        && data.targetType in ['pharmacy', 'medicine_listing', 'prescription_abuse', 'other']
+        && (!('targetId' in data) || isValidString(data.targetId, 0, 128))
+        && isValidString(data.subject, 2, 160)
+        && isValidString(data.description, 5, 1500)
+        && data.status in ['open', 'investigating', 'resolved', 'dismissed']
+        && (!('adminNotes' in data) || isValidString(data.adminNotes, 0, 1000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBanner(data) {
+      return data.keys().hasAll(['title', 'active', 'createdAt'])
+        && data.keys().hasOnly(['title', 'subtitle', 'active', 'createdAt'])
+        && isValidString(data.title, 1, 140)
+        && (!('subtitle' in data) || isValidString(data.subtitle, 0, 300))
+        && data.active is bool
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSystemSettings(data) {
+      return data.keys().hasAll(['customerMonthlyPriceEtb', 'pharmacyMonthlyPriceEtb', 'subscriptionDurationDays', 'maxPrescriptionFiles', 'maxFileSizeMb', 'retentionDays', 'updatedAt'])
+        && data.keys().hasOnly(['customerMonthlyPriceEtb', 'pharmacyMonthlyPriceEtb', 'subscriptionDurationDays', 'maxPrescriptionFiles', 'maxFileSizeMb', 'retentionDays', 'updatedAt'])
+        && data.customerMonthlyPriceEtb is number && data.customerMonthlyPriceEtb >= 0
+        && data.pharmacyMonthlyPriceEtb is number && data.pharmacyMonthlyPriceEtb >= 0
+        && data.subscriptionDurationDays is number && data.subscriptionDurationDays >= 1
+        && data.maxPrescriptionFiles is number && data.maxPrescriptionFiles >= 1 && data.maxPrescriptionFiles <= 20
+        && data.maxFileSizeMb is number && data.maxFileSizeMb >= 1 && data.maxFileSizeMb <= 25
+        && data.retentionDays is number && data.retentionDays >= 1
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorUid', 'action', 'resourceType', 'createdAt'])
+        && data.keys().hasOnly(['actorUid', 'action', 'resourceType', 'resourceId', 'details', 'createdAt'])
+        && isValidId(data.actorUid)
+        && isValidString(data.action, 1, 120)
+        && isValidString(data.resourceType, 1, 80)
+        && (!('resourceId' in data) || isValidString(data.resourceId, 0, 128))
+        && (!('details' in data) || isValidString(data.details, 0, 500))
+        && data.createdAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          isOwner(uid)
+          && incoming().role in ['customer', 'pharmacy']
+          && incoming().subscriptionStatus in ['expired', 'free_tier', 'payment_pending']
+        ));
+      allow update: if isSignedIn() && isValidId(uid) && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          isOwner(uid)
+          && incoming().role == existing().role
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'city', 'language', 'photoUrl',
+            'notificationSoundEnabled', 'accessibilityHighContrast',
+            'subscriptionStatus', 'subscriptionExpiresAt', 'updatedAt'
+          ])
+        ));
+      allow delete: if isOwner(uid) || isAdmin();
+
+      match /private/{docId} {
+        allow get, list: if isValidId(uid) && (isOwner(uid) || isAdmin());
+        allow create: if isSignedIn() && isValidId(uid) && isValidId(docId)
+          && (isOwner(uid) || isAdmin())
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == uid
+          && incoming().updatedAt == request.time;
+        allow update: if isSignedIn() && isValidId(uid) && isValidId(docId)
+          && (isOwner(uid) || isAdmin())
+          && isValidUserPrivateInfo(incoming())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time;
+        allow delete: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(uid) && isValidAdminRecord(incoming());
+      allow delete: if isAdmin() && isValidId(uid);
+    }
+
+    match /pharmacies/{pharmacyId} {
+      allow get: if isValidId(pharmacyId) && (
+        existing().verificationStatus == 'approved'
+        || (isSignedIn() && existing().ownerUid == request.auth.uid)
+        || isAdmin()
+      );
+      allow list: if existing().verificationStatus == 'approved'
+        || (isSignedIn() && existing().ownerUid == request.auth.uid)
+        || isAdmin();
+      allow create: if isSignedIn() && isValidId(pharmacyId) && isValidPharmacy(incoming())
+        && incoming().id == pharmacyId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          incoming().ownerUid == request.auth.uid
+          && incoming().verificationStatus == 'pending'
+          && (!('ratingAvg' in incoming()) || incoming().ratingAvg == 0)
+          && (!('ratingCount' in incoming()) || incoming().ratingCount == 0)
+        ));
+      allow update: if isSignedIn() && isValidId(pharmacyId) && isValidPharmacy(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          existing().ownerUid == request.auth.uid
+          && incoming().verificationStatus == existing().verificationStatus
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'ownerPharmacistName', 'region', 'city', 'subCity',
+            'woreda', 'street', 'lat', 'lng', 'phone', 'email', 'openingHours',
+            'subscriptionStatus', 'subscriptionExpiresAt', 'updatedAt'
+          ])
+        ));
+      allow delete: if isAdmin() && isValidId(pharmacyId);
+
+      match /verificationDocs/{docId} {
+        allow get: if isSignedIn() && isValidId(pharmacyId) && isValidId(docId)
+          && (existing().ownerUid == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+        allow create: if isSignedIn() && isValidId(pharmacyId) && isValidId(docId)
+          && isValidVerificationDoc(incoming())
+          && incoming().pharmacyId == pharmacyId
+          && incoming().ownerUid == request.auth.uid
+          && incoming().uploadedAt == request.time
+          && exists(/databases/$(database)/documents/pharmacies/$(pharmacyId))
+          && get(/databases/$(database)/documents/pharmacies/$(pharmacyId)).data.ownerUid == request.auth.uid;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /medicines/{medicineId} {
+      allow get: if isValidId(medicineId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidId(medicineId) && isValidMedicine(incoming())
+        && incoming().id == medicineId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(medicineId) && isValidMedicine(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(medicineId);
+    }
+
+    match /pharmacyInventory/{inventoryId} {
+      allow get: if isValidId(inventoryId) && (
+        existing().pharmacyVerified == true
+        || (isSignedIn() && existing().ownerUid == request.auth.uid)
+        || isAdmin()
+      );
+      allow list: if existing().pharmacyVerified == true
+        || (isSignedIn() && existing().ownerUid == request.auth.uid)
+        || isAdmin();
+      allow create: if isSignedIn() && isValidId(inventoryId) && isValidInventory(incoming())
+        && incoming().id == inventoryId
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId))
+        && (isAdmin() || (
+          incoming().ownerUid == request.auth.uid
+          && get(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId)).data.ownerUid == request.auth.uid
+          && incoming().pharmacyVerified == (get(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId)).data.verificationStatus == 'approved')
+        ));
+      allow update: if isSignedIn() && isValidId(inventoryId) && isValidInventory(incoming())
+        && incoming().id == existing().id
+        && incoming().pharmacyId == existing().pharmacyId
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          existing().ownerUid == request.auth.uid
+          && incoming().pharmacyVerified == (get(/databases/$(database)/documents/pharmacies/$(existing().pharmacyId)).data.verificationStatus == 'approved')
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'medicineName', 'genericName', 'brandName', 'activeIngredient',
+            'strength', 'dosageForm', 'category', 'prescriptionClass',
+            'pharmacyVerified', 'priceEtb', 'stockStatus', 'quantity', 'lastConfirmedAt', 'updatedAt'
+          ])
+        ));
+      allow delete: if isSignedIn() && isValidId(inventoryId) && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    match /inventoryHistory/{historyId} {
+      allow get, list: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(historyId) && isValidInventoryHistory(incoming())
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /locations/{locationId} {
+      allow get: if isValidId(locationId);
+      allow list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(locationId) && (request.method == 'delete' || isValidLocation(incoming()));
+    }
+
+    match /favorites/{favoriteId} {
+      allow get, list: if isSignedIn() && (existing().userUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(favoriteId) && isValidFavorite(incoming())
+        && incoming().userUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(favoriteId) && (existing().userUid == request.auth.uid || isAdmin());
+    }
+
+    match /searchHistory/{searchId} {
+      allow get, list: if isSignedIn() && (existing().userUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(searchId) && isValidSearchHistory(incoming())
+        && incoming().userUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(searchId) && (existing().userUid == request.auth.uid || isAdmin());
+    }
+
+    match /conversations/{conversationId} {
+      allow get, list: if isSignedIn() && (
+        existing().customerUid == request.auth.uid
+        || existing().pharmacyOwnerUid == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isSignedIn() && isValidId(conversationId) && isValidConversation(incoming())
+        && (incoming().customerUid == request.auth.uid || incoming().pharmacyOwnerUid == request.auth.uid)
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId));
+      allow update: if isSignedIn() && isValidId(conversationId) && isValidConversation(incoming())
+        && (existing().customerUid == request.auth.uid || existing().pharmacyOwnerUid == request.auth.uid || isAdmin())
+        && incoming().id == existing().id
+        && incoming().customerUid == existing().customerUid
+        && incoming().pharmacyId == existing().pharmacyId
+        && incoming().pharmacyOwnerUid == existing().pharmacyOwnerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt']);
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow get, list: if isSignedIn() && (
+          existing().customerUid == request.auth.uid
+          || existing().pharmacyOwnerUid == request.auth.uid
+          || isAdmin()
+        );
+        allow create: if isSignedIn() && isValidId(conversationId) && isValidId(messageId)
+          && isValidMessage(incoming())
+          && incoming().conversationId == conversationId
+          && incoming().senderUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/conversations/$(conversationId))
+          && get(/databases/$(database)/documents/conversations/$(conversationId)).data.customerUid == incoming().customerUid
+          && get(/databases/$(database)/documents/conversations/$(conversationId)).data.pharmacyOwnerUid == incoming().pharmacyOwnerUid
+          && (request.auth.uid == incoming().customerUid || request.auth.uid == incoming().pharmacyOwnerUid);
+        allow update: if isSignedIn() && isValidId(conversationId) && isValidId(messageId)
+          && isValidMessage(incoming())
+          && (existing().customerUid == request.auth.uid || existing().pharmacyOwnerUid == request.auth.uid)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['readAt']);
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /calls/{callId} {
+      allow get, list: if isSignedIn() && (
+        existing().callerUid == request.auth.uid
+        || existing().calleeUid == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isSignedIn() && isValidId(callId) && isValidCallRecord(incoming())
+        && incoming().callerUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isValidId(callId) && isValidCallRecord(incoming())
+        && (existing().callerUid == request.auth.uid || existing().calleeUid == request.auth.uid || isAdmin())
+        && incoming().callerUid == existing().callerUid
+        && incoming().calleeUid == existing().calleeUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'durationSeconds']);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && (existing().recipientUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming())
+        && incoming().createdAt == request.time
+        && (incoming().recipientUid == request.auth.uid || isAdmin() || incoming().type in ['new_inquiry', 'prescription_request', 'prescription_response', 'new_message']);
+      allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming())
+        && (existing().recipientUid == request.auth.uid || isAdmin())
+        && incoming().recipientUid == existing().recipientUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && isValidId(notificationId) && (existing().recipientUid == request.auth.uid || isAdmin());
+    }
+
+    match /subscriptions/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin())
+        && isValidSubscription(incoming())
+        && incoming().uid == uid
+        && incoming().updatedAt == request.time
+        && (isAdmin() || incoming().status in ['expired', 'payment_pending']);
+      allow update: if isSignedIn() && isValidId(uid) && (isOwner(uid) || isAdmin())
+        && isValidSubscription(incoming())
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    match /paymentTransactions/{txRef} {
+      allow get, list: if isSignedIn() && (existing().uid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(txRef) && isValidPaymentTransaction(incoming())
+        && incoming().txRef == txRef
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || incoming().status == 'pending');
+      allow update: if isSignedIn() && isValidId(txRef) && isValidPaymentTransaction(incoming())
+        && incoming().txRef == existing().txRef
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (
+          existing().uid == request.auth.uid
+          && existing().status == 'pending'
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'receiptNumber', 'verificationSignature', 'updatedAt'])
+        ));
+      allow delete: if false;
+    }
+
+    match /prescriptionRequests/{requestId} {
+      allow get, list: if isSignedIn() && (existing().customerUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(requestId) && isValidPrescriptionRequest(incoming())
+        && incoming().id == requestId
+        && incoming().customerUid == request.auth.uid
+        && incoming().status == 'submitted'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(requestId) && isValidPrescriptionRequest(incoming())
+        && incoming().id == existing().id
+        && incoming().customerUid == existing().customerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && existing().status != 'completed'
+        && existing().status != 'cancelled'
+        && (isAdmin() || (
+          existing().customerUid == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && incoming().status == 'cancelled'
+        ));
+      allow delete: if isAdmin();
+
+      match /files/{fileId} {
+        allow get, list: if isSignedIn() && (existing().uploadedByUid == request.auth.uid || isAdmin());
+        allow create: if isSignedIn() && isValidId(requestId) && isValidId(fileId)
+          && isValidPrescriptionFile(incoming())
+          && incoming().requestId == requestId
+          && incoming().uploadedByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/prescriptionRequests/$(requestId))
+          && get(/databases/$(database)/documents/prescriptionRequests/$(requestId)).data.customerUid == request.auth.uid;
+        allow update: if false;
+        allow delete: if isSignedIn() && (existing().uploadedByUid == request.auth.uid || isAdmin());
+      }
+    }
+
+    match /prescriptionAssignments/{assignmentId} {
+      allow get, list: if isSignedIn() && (
+        existing().customerUid == request.auth.uid
+        || existing().pharmacyOwnerUid == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isSignedIn() && isValidId(assignmentId) && isValidPrescriptionAssignment(incoming())
+        && incoming().id == assignmentId
+        && incoming().customerUid == request.auth.uid
+        && incoming().status == 'submitted'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId))
+        && get(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId)).data.ownerUid == incoming().pharmacyOwnerUid
+        && get(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId)).data.verificationStatus == 'approved';
+      allow update: if isSignedIn() && isValidId(assignmentId) && isValidPrescriptionAssignment(incoming())
+        && incoming().id == existing().id
+        && incoming().requestId == existing().requestId
+        && incoming().customerUid == existing().customerUid
+        && incoming().pharmacyId == existing().pharmacyId
+        && incoming().pharmacyOwnerUid == existing().pharmacyOwnerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && existing().status != 'completed'
+        && existing().status != 'cancelled'
+        && (isAdmin() || (
+          existing().pharmacyOwnerUid == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'responseNotes', 'estimatedTotalEtb', 'estimatedPrepMinutes', 'updatedAt'
+          ])
+        ) || (
+          existing().customerUid == request.auth.uid
+          && incoming().status in ['completed', 'cancelled']
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        ));
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow get: if isValidId(reviewId);
+      allow list: if true;
+      allow create: if isSignedIn() && isValidId(reviewId) && isValidReview(incoming())
+        && incoming().customerUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/pharmacies/$(incoming().pharmacyId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(reviewId) && (existing().customerUid == request.auth.uid || isAdmin());
+    }
+
+    match /complaints/{complaintId} {
+      allow get, list: if isSignedIn() && (existing().reporterUid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(complaintId) && isValidComplaint(incoming())
+        && incoming().reporterUid == request.auth.uid
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(complaintId) && isValidComplaint(incoming())
+        && incoming().reporterUid == existing().reporterUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    match /banners/{bannerId} {
+      allow get: if isValidId(bannerId);
+      allow list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(bannerId) && (request.method == 'delete' || isValidBanner(incoming()));
+    }
+
+    match /systemSettings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isAdmin() && isValidId(settingId) && isValidSystemSettings(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming())
+        && incoming().actorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

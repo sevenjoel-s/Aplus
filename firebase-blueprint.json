@@ -1,0 +1,497 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Operational user profile for customers, pharmacy staff, and administrators.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["customer", "pharmacy", "support", "moderator", "admin", "super_admin"] },
+        "city": { "type": "string", "maxLength": 100 },
+        "language": { "type": "string", "enum": ["en", "am", "om", "ti", "so"] },
+        "photoUrl": { "type": "string", "maxLength": 500 },
+        "notificationSoundEnabled": { "type": "boolean" },
+        "accessibilityHighContrast": { "type": "boolean" },
+        "subscriptionStatus": {
+          "type": "string",
+          "enum": ["active", "expiring_soon", "expired", "payment_pending", "payment_failed", "cancelled", "suspended", "free_tier"]
+        },
+        "subscriptionExpiresAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "language", "subscriptionStatus", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record for a user containing email, phone, and verification state.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "phoneVerified": { "type": "boolean" },
+        "emailVerified": { "type": "boolean" },
+        "mfaEnabled": { "type": "boolean" },
+        "consentGivenAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "phoneVerified", "emailVerified", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorized administrator role mapping.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "moderator", "support"] },
+        "email": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "email", "createdAt"]
+    },
+    "Pharmacy": {
+      "title": "Pharmacy",
+      "description": "Registered Ethiopian pharmacy awaiting or holding verification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "ownerPharmacistName": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "licenseNumber": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "region": { "type": "string", "maxLength": 80 },
+        "city": { "type": "string", "maxLength": 100 },
+        "subCity": { "type": "string", "maxLength": 100 },
+        "woreda": { "type": "string", "maxLength": 80 },
+        "street": { "type": "string", "maxLength": 200 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 200 },
+        "openingHours": { "type": "string", "maxLength": 200 },
+        "verificationStatus": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "ratingAvg": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "subscriptionStatus": {
+          "type": "string",
+          "enum": ["active", "expiring_soon", "expired", "payment_pending", "payment_failed", "cancelled", "suspended"]
+        },
+        "subscriptionExpiresAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerUid", "name", "ownerPharmacistName", "licenseNumber", "region", "city", "phone", "verificationStatus", "createdAt", "updatedAt"]
+    },
+    "VerificationDoc": {
+      "title": "VerificationDoc",
+      "description": "Private pharmacy license verification document metadata.",
+      "type": "object",
+      "properties": {
+        "pharmacyId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fileId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fileName": { "type": "string", "maxLength": 200 },
+        "docType": { "type": "string", "maxLength": 64 },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pharmacyId", "ownerUid", "fileId", "fileName", "docType", "uploadedAt"]
+    },
+    "Medicine": {
+      "title": "Medicine",
+      "description": "Verified medicine catalog record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "genericName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "brandName": { "type": "string", "maxLength": 160 },
+        "activeIngredient": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "strength": { "type": "string", "maxLength": 80 },
+        "dosageForm": { "type": "string", "maxLength": 80 },
+        "packaging": { "type": "string", "maxLength": 120 },
+        "manufacturer": { "type": "string", "maxLength": 140 },
+        "countryOfOrigin": { "type": "string", "maxLength": 80 },
+        "registrationNumber": { "type": "string", "maxLength": 80 },
+        "prescriptionClass": { "type": "string", "enum": ["OTC", "POM", "Controlled"] },
+        "description": { "type": "string", "maxLength": 1200 },
+        "approvedUsage": { "type": "string", "maxLength": 800 },
+        "warnings": { "type": "string", "maxLength": 800 },
+        "storageInfo": { "type": "string", "maxLength": 300 },
+        "category": { "type": "string", "maxLength": 80 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "verifiedSource": { "type": "string", "maxLength": 200 },
+        "recallAlert": { "type": "string", "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "genericName", "activeIngredient", "dosageForm", "category", "prescriptionClass", "verifiedSource", "createdAt", "updatedAt"]
+    },
+    "PharmacyInventory": {
+      "title": "PharmacyInventory",
+      "description": "Real-time pharmacy medicine stock and displayed price.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pharmacyId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pharmacyName": { "type": "string", "maxLength": 160 },
+        "pharmacyCity": { "type": "string", "maxLength": 100 },
+        "pharmacyLat": { "type": "number" },
+        "pharmacyLng": { "type": "number" },
+        "pharmacyVerified": { "type": "boolean" },
+        "medicineId": { "type": "string", "maxLength": 128 },
+        "medicineName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "genericName": { "type": "string", "maxLength": 160 },
+        "brandName": { "type": "string", "maxLength": 160 },
+        "activeIngredient": { "type": "string", "maxLength": 160 },
+        "strength": { "type": "string", "maxLength": 80 },
+        "dosageForm": { "type": "string", "maxLength": 80 },
+        "category": { "type": "string", "maxLength": 80 },
+        "prescriptionClass": { "type": "string", "enum": ["OTC", "POM", "Controlled"] },
+        "priceEtb": { "type": "number" },
+        "stockStatus": { "type": "string", "enum": ["available", "low_stock", "out_of_stock", "unconfirmed"] },
+        "quantity": { "type": "number" },
+        "lastConfirmedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "pharmacyId", "ownerUid", "medicineName", "priceEtb", "stockStatus", "lastConfirmedAt", "updatedAt"]
+    },
+    "InventoryHistory": {
+      "title": "InventoryHistory",
+      "description": "Audit log of stock and price changes by pharmacy staff.",
+      "type": "object",
+      "properties": {
+        "inventoryId": { "type": "string", "maxLength": 128 },
+        "pharmacyId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "medicineName": { "type": "string", "maxLength": 160 },
+        "previousStatus": { "type": "string", "maxLength": 32 },
+        "newStatus": { "type": "string", "maxLength": 32 },
+        "priceEtb": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["inventoryId", "pharmacyId", "ownerUid", "newStatus", "priceEtb", "createdAt"]
+    },
+    "Location": {
+      "title": "Location",
+      "description": "Ethiopian administrative geographic region, city, sub-city, or woreda.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "region": { "type": "string", "maxLength": 100 },
+        "city": { "type": "string", "maxLength": 100 },
+        "subCity": { "type": "string", "maxLength": 100 },
+        "woreda": { "type": "string", "maxLength": 80 },
+        "neighborhood": { "type": "string", "maxLength": 100 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "region", "city", "lat", "lng", "createdAt"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "User saved medicine or pharmacy.",
+      "type": "object",
+      "properties": {
+        "userUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetType": { "type": "string", "enum": ["medicine", "pharmacy"] },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetName": { "type": "string", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "targetType", "targetId", "targetName", "createdAt"]
+    },
+    "SearchHistory": {
+      "title": "SearchHistory",
+      "description": "User search query history.",
+      "type": "object",
+      "properties": {
+        "userUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "query": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "city": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "query", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Private customer-to-pharmacy conversation thread.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pharmacyId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pharmacyOwnerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "pharmacyName": { "type": "string", "maxLength": 160 },
+        "lastMessage": { "type": "string", "maxLength": 500 },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "customerUid", "pharmacyId", "pharmacyOwnerUid", "customerName", "pharmacyName", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Individual encrypted chat message within a conversation.",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderRole": { "type": "string", "enum": ["customer", "pharmacy"] },
+        "text": { "type": "string", "maxLength": 2000 },
+        "attachmentFileId": { "type": "string", "maxLength": 128 },
+        "attachmentName": { "type": "string", "maxLength": 200 },
+        "attachmentType": { "type": "string", "maxLength": 80 },
+        "readAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["conversationId", "senderUid", "senderRole", "text", "createdAt"]
+    },
+    "CallRecord": {
+      "title": "CallRecord",
+      "description": "WebRTC audio/video call log between customer and pharmacy.",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string", "maxLength": 128 },
+        "callerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "calleeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pharmacyId": { "type": "string", "maxLength": 128 },
+        "callType": { "type": "string", "enum": ["audio", "video"] },
+        "status": { "type": "string", "enum": ["ringing", "active", "ended", "missed", "declined"] },
+        "durationSeconds": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["conversationId", "callerUid", "calleeUid", "callType", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time user notification.",
+      "type": "object",
+      "properties": {
+        "recipientUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 160 },
+        "body": { "type": "string", "maxLength": 500 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientUid", "type", "title", "body", "read", "createdAt"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "User or pharmacy 30-day subscription state (50 ETB default).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "role": { "type": "string", "enum": ["customer", "pharmacy"] },
+        "status": {
+          "type": "string",
+          "enum": ["active", "expiring_soon", "expired", "payment_pending", "payment_failed", "cancelled", "suspended"]
+        },
+        "priceEtb": { "type": "number" },
+        "durationDays": { "type": "number" },
+        "startedAt": { "type": "string", "maxLength": 64 },
+        "expiresAt": { "type": "string", "maxLength": 64 },
+        "lastTxRef": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "status", "priceEtb", "durationDays", "updatedAt"]
+    },
+    "PaymentTransaction": {
+      "title": "PaymentTransaction",
+      "description": "Server-verified payment transaction record.",
+      "type": "object",
+      "properties": {
+        "txRef": { "type": "string", "minLength": 4, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "amountEtb": { "type": "number" },
+        "currency": { "type": "string", "enum": ["ETB"] },
+        "provider": { "type": "string", "enum": ["chapa", "telebirr", "cbe_birr"] },
+        "status": { "type": "string", "enum": ["pending", "verified", "failed"] },
+        "purpose": { "type": "string", "enum": ["subscription_activation", "subscription_renewal"] },
+        "receiptNumber": { "type": "string", "maxLength": 128 },
+        "verificationSignature": { "type": "string", "maxLength": 256 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["txRef", "uid", "amountEtb", "currency", "provider", "status", "purpose", "createdAt", "updatedAt"]
+    },
+    "PrescriptionRequest": {
+      "title": "PrescriptionRequest",
+      "description": "Private customer prescription or medicine packaging image submission.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "requestType": { "type": "string", "enum": ["prescription", "medicine_image"] },
+        "city": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "medicineNameKnown": { "type": "string", "maxLength": 160 },
+        "strengthKnown": { "type": "string", "maxLength": 80 },
+        "quantityKnown": { "type": "string", "maxLength": 60 },
+        "consentAccepted": { "type": "boolean" },
+        "targetPharmacyIds": { "type": "array" },
+        "status": {
+          "type": "string",
+          "enum": ["submitted", "received", "under_review", "available", "partially_available", "out_of_stock", "clarification_required", "response_sent", "completed", "cancelled"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "customerUid", "customerName", "requestType", "city", "consentAccepted", "targetPharmacyIds", "status", "createdAt", "updatedAt"]
+    },
+    "PrescriptionFile": {
+      "title": "PrescriptionFile",
+      "description": "Private encrypted file reference attached to a prescription request.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploadedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "originalName": { "type": "string", "maxLength": 200 },
+        "mimeType": { "type": "string", "maxLength": 80 },
+        "sizeBytes": { "type": "number" },
+        "pageIndex": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "uploadedByUid", "fileId", "originalName", "mimeType", "sizeBytes", "createdAt"]
+    },
+    "PrescriptionAssignment": {
+      "title": "PrescriptionAssignment",
+      "description": "Isolated per-pharmacy assignment and private quotation for a prescription request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "pharmacyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pharmacyOwnerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pharmacyName": { "type": "string", "maxLength": 160 },
+        "requestType": { "type": "string", "enum": ["prescription", "medicine_image"] },
+        "city": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "medicineNameKnown": { "type": "string", "maxLength": 160 },
+        "strengthKnown": { "type": "string", "maxLength": 80 },
+        "quantityKnown": { "type": "string", "maxLength": 60 },
+        "fileIds": { "type": "array" },
+        "status": {
+          "type": "string",
+          "enum": ["submitted", "received", "under_review", "available", "partially_available", "out_of_stock", "clarification_required", "response_sent", "completed", "cancelled"]
+        },
+        "responseNotes": { "type": "string", "maxLength": 1200 },
+        "estimatedTotalEtb": { "type": "number" },
+        "estimatedPrepMinutes": { "type": "number" },
+        "pharmacyLocationText": { "type": "string", "maxLength": 240 },
+        "pharmacyPhone": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "requestId", "customerUid", "pharmacyId", "pharmacyOwnerUid", "pharmacyName", "requestType", "status", "createdAt", "updatedAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer rating and review for a verified pharmacy.",
+      "type": "object",
+      "properties": {
+        "pharmacyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "maxLength": 800 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pharmacyId", "customerUid", "customerName", "rating", "createdAt"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "Customer report for inaccurate medicine info or pharmacy issue.",
+      "type": "object",
+      "properties": {
+        "reporterUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetType": { "type": "string", "enum": ["pharmacy", "medicine_listing", "prescription_abuse", "other"] },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "subject": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["open", "investigating", "resolved", "dismissed"] },
+        "adminNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterUid", "targetType", "subject", "description", "status", "createdAt", "updatedAt"]
+    },
+    "Banner": {
+      "title": "Banner",
+      "description": "Promotional health banner managed by administrators.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 140 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "active", "createdAt"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Platform-wide subscription, upload limits, and policy settings.",
+      "type": "object",
+      "properties": {
+        "customerMonthlyPriceEtb": { "type": "number" },
+        "pharmacyMonthlyPriceEtb": { "type": "number" },
+        "subscriptionDurationDays": { "type": "number" },
+        "maxPrescriptionFiles": { "type": "number" },
+        "maxFileSizeMb": { "type": "number" },
+        "retentionDays": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerMonthlyPriceEtb", "pharmacyMonthlyPriceEtb", "subscriptionDurationDays", "maxPrescriptionFiles", "maxFileSizeMb", "retentionDays", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Security and administrative audit log.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 120 },
+        "resourceType": { "type": "string", "maxLength": 80 },
+        "resourceId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "action", "resourceType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": { "$ref": "#/entities/UserProfile" }, "description": "User operational profiles" },
+    "/users/{uid}/private/{docId}": { "schema": { "$ref": "#/entities/UserPrivateInfo" }, "description": "Isolated user PII" },
+    "/admins/{uid}": { "schema": { "$ref": "#/entities/AdminRecord" }, "description": "Admin role directory" },
+    "/pharmacies/{pharmacyId}": { "schema": { "$ref": "#/entities/Pharmacy" }, "description": "Ethiopian pharmacies" },
+    "/pharmacies/{pharmacyId}/verificationDocs/{docId}": { "schema": { "$ref": "#/entities/VerificationDoc" }, "description": "Pharmacy license documents" },
+    "/medicines/{medicineId}": { "schema": { "$ref": "#/entities/Medicine" }, "description": "Medicine database" },
+    "/pharmacyInventory/{inventoryId}": { "schema": { "$ref": "#/entities/PharmacyInventory" }, "description": "Pharmacy stock & price listings" },
+    "/inventoryHistory/{historyId}": { "schema": { "$ref": "#/entities/InventoryHistory" }, "description": "Inventory change logs" },
+    "/locations/{locationId}": { "schema": { "$ref": "#/entities/Location" }, "description": "Ethiopian regions, cities, and woredas" },
+    "/favorites/{favoriteId}": { "schema": { "$ref": "#/entities/Favorite" }, "description": "Saved medicines and pharmacies" },
+    "/searchHistory/{searchId}": { "schema": { "$ref": "#/entities/SearchHistory" }, "description": "User search history" },
+    "/conversations/{conversationId}": { "schema": { "$ref": "#/entities/Conversation" }, "description": "Customer-pharmacy chat threads" },
+    "/conversations/{conversationId}/messages/{messageId}": { "schema": { "$ref": "#/entities/Message" }, "description": "Chat messages" },
+    "/calls/{callId}": { "schema": { "$ref": "#/entities/CallRecord" }, "description": "Audio/video call history" },
+    "/notifications/{notificationId}": { "schema": { "$ref": "#/entities/Notification" }, "description": "In-app notifications" },
+    "/subscriptions/{uid}": { "schema": { "$ref": "#/entities/Subscription" }, "description": "50 ETB monthly subscriptions" },
+    "/paymentTransactions/{txRef}": { "schema": { "$ref": "#/entities/PaymentTransaction" }, "description": "Payment receipts & transactions" },
+    "/prescriptionRequests/{requestId}": { "schema": { "$ref": "#/entities/PrescriptionRequest" }, "description": "Private prescription uploads" },
+    "/prescriptionRequests/{requestId}/files/{fileId}": { "schema": { "$ref": "#/entities/PrescriptionFile" }, "description": "Encrypted prescription file metadata" },
+    "/prescriptionAssignments/{assignmentId}": { "schema": { "$ref": "#/entities/PrescriptionAssignment" }, "description": "Private per-pharmacy prescription requests and quotes" },
+    "/reviews/{reviewId}": { "schema": { "$ref": "#/entities/Review" }, "description": "Pharmacy ratings & reviews" },
+    "/complaints/{complaintId}": { "schema": { "$ref": "#/entities/Complaint" }, "description": "Complaints & inaccurate listing reports" },
+    "/banners/{bannerId}": { "schema": { "$ref": "#/entities/Banner" }, "description": "Admin promotional banners" },
+    "/systemSettings/{settingId}": { "schema": { "$ref": "#/entities/SystemSettings" }, "description": "Platform configuration" },
+    "/auditLogs/{logId}": { "schema": { "$ref": "#/entities/AuditLog" }, "description": "Security & admin audit logs" }
+  }
+}

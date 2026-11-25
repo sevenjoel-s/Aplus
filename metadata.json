@@ -1,0 +1,6 @@
+{
+  "name": "Aplus Drug Finder",
+  "description": "Find Medicines. Live Healthier. Ethiopia's verified medicine discovery and pharmacy connection platform.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
